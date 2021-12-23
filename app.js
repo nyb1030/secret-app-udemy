@@ -1,11 +1,9 @@
 //jshint esversion:6
-require('dotenv').config()
 const express = require("express");
 const ejs = require("ejs");
 const mongoose = require('mongoose');
-const encrypt = require('mongoose-encryption');
-
-
+const md5 = require('md5');
+const bcrypt = require('bcrypt');
 const app = express();
 
 mongoose.connect('mongodb://localhost:27017/userDB');
@@ -20,10 +18,9 @@ const userSchema = new mongoose.Schema ({
   password: String
 })
 
-const secret = process.env.SECRET;
-userSchema.plugin(encrypt, { secret: secret, encryptedFields: ['password'] })
-
 const User = mongoose.model('User', userSchema);
+
+const saltRounds = 10;
 
 app.get("/", function(req, res){
   res.render("home")
@@ -42,17 +39,23 @@ app.get("/register", function(req, res){
 })
 
 app.post("/register", function(req, res){
-  const newUser = new User ({
-    email: req.body.username,
-    password: req.body.password
-  })
-  newUser.save(function(err){
-    if (err){
-      console.log(err);
-    } else {
-      res.render("secrets")
-    }
-  })
+
+  const email = req.body.username
+  const password = req.body.password
+
+  bcrypt.hash(password, saltRounds, function(err, hash) {
+    const newUser = new User ({
+      email: email,
+      password: hash
+    })
+    newUser.save(function(err){
+      if (err){
+        console.log(err);
+      } else {
+        res.render("secrets")
+      }
+    })
+  });
 })
 
 app.post("/login", function(req, res){
@@ -64,13 +67,14 @@ app.post("/login", function(req, res){
       console.log(err);
     } else {
       if (foundUser){
-        console.log(foundUser);
-        if (foundUser.password === password){
-          res.render("secrets")
-        } else {
-          console.log("Password does not match");
-          res.redirect("/")
-        }
+        bcrypt.compare(password, foundUser.password, function(err, result) {
+          if (result === true){
+            res.render("secrets")
+          } else {
+            console.log("Password does not match");
+            res.redirect("/")
+          }
+        })
       } else {
         console.log("User not found");
         res.redirect("/")
